@@ -40,11 +40,11 @@
       "./index.ts"
     ],
     "channels": [
-      "dingtalk-ultimate"
+      "dingtalk"
     ],
     "installDependencies": true,
     "channel": {
-      "id": "dingtalk-ultimate",
+      "id": "dingtalk",
       "label": "DingTalk",
       "selectionLabel": "DingTalk (钉钉)",
       "docsPath": "/channels/dingtalk",
@@ -58,7 +58,7 @@
     },
     "install": {
       "npmSpec": "@openclaw/dingtalk-ultimate",
-      "localPath": "extensions/dingtalk-ultimate",
+      "localPath": "extensions/dingtalk",
       "defaultChoice": "local"
     }
   }

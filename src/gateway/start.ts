@@ -23,7 +23,14 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
   const { account, cfg, abortSignal, log } = ctx;
   const config = account.config;
 
+  log?.info?.(`[DingTalk] ========== 开始启动 DingTalk Stream ==========`);
+  log?.info?.(`[DingTalk] accountId: ${account.accountId}`);
+  log?.info?.(`[DingTalk] config.clientId: ${config.clientId ? config.clientId.substring(0, 10) + '...' : '未配置'}`);
+  log?.info?.(`[DingTalk] config.clientSecret: ${config.clientSecret ? '已配置' : '未配置'}`);
+  log?.info?.(`[DingTalk] config.enabled: ${config.enabled}`);
+
   if (!config.clientId || !config.clientSecret) {
+    log?.error?.(`[DingTalk] 错误: clientId 或 clientSecret 未配置!`);
     throw new Error('DingTalk clientId and clientSecret are required');
   }
 
@@ -33,19 +40,24 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
   await cleanupOrphanedTempFiles(log);
 
   // 创建 Stream 客户端
+  log?.info?.(`[DingTalk] 正在创建 DWClient...`);
   const client = new DWClient({
     clientId: config.clientId,
     clientSecret: config.clientSecret,
     debug: config.debug || false,
     keepAlive: true,
   });
+  log?.info?.(`[DingTalk] DWClient 创建成功`);
 
   // 注册消息回调
+  log?.info?.(`[DingTalk] 正在注册回调监听器: ${TOPIC_ROBOT}`);
   client.registerCallbackListener(TOPIC_ROBOT, async (res: unknown) => {
+    log?.info?.(`[DingTalk] >>>>>>>>>> 收到 Stream 回调! <<<<<<<<<<`);
     const response = res as { headers?: { messageId?: string }; data: string };
     const messageId = response.headers?.messageId;
 
     log?.info?.(`[DingTalk] Stream callback received, messageId=${messageId}`);
+    log?.info?.(`[DingTalk] response.data 前100字符: ${response.data?.substring(0, 100)}...`);
 
     // 【关键修复】立即确认回调，避免钉钉服务器超时重发
     // 钉钉 Stream 模式要求及时响应，否则约60秒后会重发消息
@@ -84,8 +96,11 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
   });
 
   // 连接 Stream
+  log?.info?.(`[DingTalk] 正在连接 Stream...`);
   await client.connect();
+  log?.info?.(`[DingTalk] ========== Stream 连接成功! ==========`);
   log?.info?.(`[${account.accountId}] DingTalk Stream client connected`);
+  log?.info?.(`[DingTalk] 等待接收消息... (已注册 ${TOPIC_ROBOT} 回调)`);
 
   // 停止标志
   let stopped = false;
@@ -130,8 +145,30 @@ export function isConfigured(cfg: OpenClawConfig, accountId?: string): boolean {
  * @param accountId 账户 ID
  */
 export function getConfig(cfg: OpenClawConfig, accountId?: string): DingTalkConfig {
+  // 调试：打印所有可用的 channels
+  const availableChannels = Object.keys(cfg?.channels || {});
+  console.log('[DingTalk][getConfig] ====== 配置检查 ======');
+  console.log('[DingTalk][getConfig] 可用 channels:', availableChannels.join(', ') || '(无)');
+  
   const dingtalkCfg = cfg?.channels?.dingtalk;
-  if (!dingtalkCfg) return {} as DingTalkConfig;
+  console.log('[DingTalk][getConfig] channels.dingtalk:', dingtalkCfg ? '存在' : '不存在');
+  
+  if (!dingtalkCfg) {
+    console.log('[DingTalk][getConfig] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    console.log('[DingTalk][getConfig] 错误: channels.dingtalk 配置不存在!');
+    console.log('[DingTalk][getConfig] 请在 ~/.openclaw/openclaw.json 中添加:');
+    console.log('[DingTalk][getConfig] {');
+    console.log('[DingTalk][getConfig]   "channels": {');
+    console.log('[DingTalk][getConfig]     "dingtalk": {');
+    console.log('[DingTalk][getConfig]       "enabled": true,');
+    console.log('[DingTalk][getConfig]       "clientId": "你的AppKey",');
+    console.log('[DingTalk][getConfig]       "clientSecret": "你的AppSecret"');
+    console.log('[DingTalk][getConfig]     }');
+    console.log('[DingTalk][getConfig]   }');
+    console.log('[DingTalk][getConfig] }');
+    console.log('[DingTalk][getConfig] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    return {} as DingTalkConfig;
+  }
 
   // 检查是否为多账户配置
   if ('accounts' in dingtalkCfg && dingtalkCfg.accounts && accountId) {
@@ -139,6 +176,11 @@ export function getConfig(cfg: OpenClawConfig, accountId?: string): DingTalkConf
     if (accountConfig) return accountConfig;
   }
 
+  console.log('[DingTalk][getConfig] clientId:', dingtalkCfg.clientId ? `${dingtalkCfg.clientId.substring(0, 8)}...` : '未配置!');
+  console.log('[DingTalk][getConfig] clientSecret:', dingtalkCfg.clientSecret ? '已配置' : '未配置!');
+  console.log('[DingTalk][getConfig] enabled:', dingtalkCfg.enabled);
+  console.log('[DingTalk][getConfig] ====== 配置检查完成 ======');
+  
   return dingtalkCfg as DingTalkConfig;
 }
 

@@ -28,10 +28,20 @@ const plugin = {
   },
 
   register(api: OpenClawPluginApi): void {
+    console.log('[DingTalk] ========== 插件注册开始 ==========');
+    console.log('[DingTalk] api.runtime:', api.runtime ? '存在' : '不存在');
+    
     setDingTalkRuntime(api.runtime);
+    console.log('[DingTalk] Runtime 已设置');
+    
     api.registerChannel({ plugin: dingtalkPlugin });
+    console.log('[DingTalk] Channel 已注册, id:', dingtalkPlugin.id);
+    
     registerGatewayMethods(api);
+    console.log('[DingTalk] Gateway Methods 已注册');
+    
     api.logger?.info('[DingTalk] Ultimate edition plugin registered');
+    console.log('[DingTalk] ========== 插件注册完成 ==========');
   },
 };
 

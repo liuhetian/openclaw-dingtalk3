@@ -15,6 +15,8 @@ let currentLogger: Logger | undefined;
  * 设置 DingTalk 运行时
  */
 export function setDingTalkRuntime(runtime: PluginRuntime): void {
+  console.log('[DingTalk][Runtime] 设置运行时');
+  console.log('[DingTalk][Runtime] gateway.port:', runtime?.gateway?.port);
   dingTalkRuntime = runtime;
 }
 
