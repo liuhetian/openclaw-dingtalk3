@@ -5,6 +5,7 @@
   "main": "index.ts",
   "type": "module",
   "scripts": {
+    "build": "echo 'No build needed - jiti loads TS at runtime'",
     "type-check": "tsc --noEmit",
     "lint": "eslint index.ts src/",
     "lint:fix": "eslint --fix index.ts src/ && prettier --write index.ts src/"
@@ -39,11 +40,11 @@
       "./index.ts"
     ],
     "channels": [
-      "dingtalk"
+      "dingtalk-ultimate"
     ],
     "installDependencies": true,
     "channel": {
-      "id": "dingtalk",
+      "id": "dingtalk-ultimate",
       "label": "DingTalk",
       "selectionLabel": "DingTalk (钉钉)",
       "docsPath": "/channels/dingtalk",
