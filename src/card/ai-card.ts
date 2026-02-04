@@ -66,7 +66,8 @@ export async function createAICard(
       createBody.imRobotOpenDeliverModel = { spaceType: 'IM_ROBOT' };
     }
 
-    log?.debug?.(`[AICard] POST /v1.0/card/instances/createAndDeliver`);
+    log?.info?.(`[AICard] POST /v1.0/card/instances/createAndDeliver`);
+    log?.info?.(`[AICard] Request body: ${JSON.stringify(createBody)}`);
 
     const response = await retryWithBackoff(
       async () => {
@@ -81,7 +82,7 @@ export async function createAICard(
       { maxRetries: 2, log }
     );
 
-    log?.debug?.(`[AICard] Create response: status=${response.status}`);
+    log?.info?.(`[AICard] Create response: status=${response.status}, data=${JSON.stringify(response.data)}`);
 
     const instance: AICardInstance = {
       cardInstanceId,
@@ -92,6 +93,7 @@ export async function createAICard(
       lastUpdated: Date.now(),
       state: AICardStatus.PROCESSING,
       config,
+      inputingStarted: false,  // 首次 streaming 前需要切换到 INPUTING 状态
     };
 
     return instance;
@@ -99,6 +101,14 @@ export async function createAICard(
     log?.error?.(`[AICard] Create failed for ${targetDesc}: ${error instanceof Error ? error.message : error}`);
     if (axios.isAxiosError(error) && error.response) {
       log?.error?.(`[AICard] Error response: ${JSON.stringify(error.response.data)}`);
+      
+      // 如果是卡片模板相关错误，给出友好提示
+      const errMsg = JSON.stringify(error.response.data);
+      if (errMsg.includes('template') || errMsg.includes('模板') || error.response.status === 404) {
+        log?.error?.(`[AICard] ⚠️ 可能是 cardTemplateId 配置错误！`);
+        log?.error?.(`[AICard] 请在钉钉卡片平台创建 AI Card 模板，并配置正确的 cardTemplateId`);
+        log?.error?.(`[AICard] 或者改用 messageType: "markdown" 模式`);
+      }
     }
     return null;
   }
@@ -133,6 +143,9 @@ export async function createAICardFromMessage(
 
 /**
  * 流式更新 AI Card 内容
+ * 参照 dingtalk-moltbot-connector 的成功实现：
+ * 1. 首次 streaming 前，先切换到 INPUTING 状态
+ * 2. 使用 key='msgContent' 而非 'content'
  * @param card AI Card 实例
  * @param content 内容
  * @param finished 是否完成
@@ -156,11 +169,50 @@ export async function streamAICard(
     }
   }
 
-  // 直接调用 streaming API，使用 key='content'（新版 API）
+  // 【关键】首次 streaming 前，先调用 PUT /v1.0/card/instances 切换到 INPUTING 状态
+  // 这是钉钉 AI Card API 的必需步骤，否则会返回 500 错误
+  if (!card.inputingStarted) {
+    const statusBody = {
+      outTrackId: card.cardInstanceId,
+      cardData: {
+        cardParamMap: {
+          flowStatus: AICardStatus.INPUTING,
+          msgContent: '',
+          staticMsgContent: '',
+          sys_full_json_obj: JSON.stringify({
+            order: ['msgContent'],  // 只声明实际使用的字段
+          }),
+        },
+      },
+    };
+
+    log?.info?.(`[AICard] PUT /v1.0/card/instances (INPUTING) outTrackId=${card.cardInstanceId}`);
+
+    try {
+      const statusResp = await axios.put(`${DINGTALK_API}/v1.0/card/instances`, statusBody, {
+        headers: {
+          'x-acs-dingtalk-access-token': card.accessToken,
+          'Content-Type': 'application/json',
+        },
+        timeout: 10_000,
+      });
+      log?.info?.(`[AICard] INPUTING response: status=${statusResp.status}, data=${JSON.stringify(statusResp.data)}`);
+    } catch (error) {
+      log?.error?.(`[AICard] INPUTING switch failed: ${error instanceof Error ? error.message : error}`);
+      if (axios.isAxiosError(error) && error.response) {
+        log?.error?.(`[AICard] Error response: ${JSON.stringify(error.response.data)}`);
+      }
+      throw error;
+    }
+
+    card.inputingStarted = true;
+  }
+
+  // 调用 streaming API 更新内容，使用 key='msgContent'（不是 'content'）
   const streamBody: AICardStreamingRequest = {
     outTrackId: card.cardInstanceId,
     guid: randomUUID(),
-    key: 'content',  // 新版 API 使用 content
+    key: 'msgContent',  // 【关键】使用 msgContent 而非 content
     content,
     isFull: true, // 全量替换
     isFinalize: finished,
@@ -178,7 +230,7 @@ export async function streamAICard(
       timeout: 10_000,
     });
 
-    log?.info?.(`[AICard] Streaming response: status=${response.status}`);
+    log?.info?.(`[AICard] Streaming response: status=${response.status}, data=${JSON.stringify(response.data)}`);
 
     // 更新状态
     card.lastUpdated = Date.now();
@@ -218,6 +270,15 @@ export async function streamAICard(
     log?.error?.(`[AICard] Streaming failed: ${error instanceof Error ? error.message : error}`);
     if (axios.isAxiosError(error) && error.response) {
       log?.error?.(`[AICard] Error response: ${JSON.stringify(error.response.data)}`);
+      
+      // 500 错误通常是卡片模板或字段配置问题
+      if (error.response.status === 500) {
+        log?.error?.(`[AICard] ⚠️ 钉钉返回 500 错误，可能原因：`);
+        log?.error?.(`[AICard]   1. cardTemplateId 不正确（需要在钉钉卡片平台创建自己的 AI Card 模板）`);
+        log?.error?.(`[AICard]   2. 卡片模板中缺少 'msgContent' 字段`);
+        log?.error?.(`[AICard]   3. 权限不足（需要 Card.Streaming.Write 和 Card.Instance.Write）`);
+        log?.error?.(`[AICard] 建议改用 messageType: "markdown" 模式避免此问题`);
+      }
     }
     throw error;
   }
@@ -225,6 +286,9 @@ export async function streamAICard(
 
 /**
  * 完成 AI Card
+ * 参照 dingtalk-moltbot-connector 的成功实现：
+ * 1. 先用 isFinalize=true 关闭流式通道
+ * 2. 再调用 PUT /v1.0/card/instances 设置 FINISHED 状态
  * @param card AI Card 实例
  * @param content 最终内容
  * @param log 日志器
@@ -232,8 +296,42 @@ export async function streamAICard(
 export async function finishAICard(card: AICardInstance, content: string, log?: Logger): Promise<void> {
   log?.info?.(`[AICard] Finishing card, content length=${content.length}`);
   
-  // 直接用 isFinalize=true 关闭流式通道，API 会自动处理状态更新
+  // 1. 先用 isFinalize=true 关闭流式通道
   await streamAICard(card, content, true, log);
+
+  // 2. 再调用 PUT /v1.0/card/instances 设置 FINISHED 状态
+  const finishBody = {
+    outTrackId: card.cardInstanceId,
+    cardData: {
+      cardParamMap: {
+        flowStatus: AICardStatus.FINISHED,
+        msgContent: content,
+        staticMsgContent: '',
+        sys_full_json_obj: JSON.stringify({
+          order: ['msgContent'],  // 只声明实际使用的字段
+        }),
+      },
+    },
+  };
+
+  log?.info?.(`[AICard] PUT /v1.0/card/instances (FINISHED) outTrackId=${card.cardInstanceId}`);
+
+  try {
+    const finishResp = await axios.put(`${DINGTALK_API}/v1.0/card/instances`, finishBody, {
+      headers: {
+        'x-acs-dingtalk-access-token': card.accessToken,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10_000,
+    });
+    log?.info?.(`[AICard] FINISHED response: status=${finishResp.status}, data=${JSON.stringify(finishResp.data)}`);
+  } catch (error) {
+    log?.error?.(`[AICard] FINISHED update failed: ${error instanceof Error ? error.message : error}`);
+    if (axios.isAxiosError(error) && error.response) {
+      log?.error?.(`[AICard] Error response: ${JSON.stringify(error.response.data)}`);
+    }
+    // 不抛出错误，因为流式通道已经关闭，状态更新失败不影响用户体验
+  }
 }
 
 /**

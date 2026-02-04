@@ -178,6 +178,8 @@ export interface AICardInstance {
   lastUpdated: number;
   state: AICardStatusType;
   config: DingTalkConfig;
+  /** 是否已切换到 INPUTING 状态（需要在首次 streaming 前切换） */
+  inputingStarted?: boolean;
 }
 
 /** AI Card 目标 */

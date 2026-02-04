@@ -30,6 +30,21 @@ openclaw plugins install -l .
 
 ## 配置
 
+### 创建 AI Card 模板（如果使用 card 模式）
+
+如需使用 AI 互动卡片功能，需要在钉钉卡片平台创建模板：
+
+**步骤：**
+1. 访问 [钉钉卡片平台](https://open.dingtalk.com/document/development/card)
+2. 进入「我的模板」
+3. 点击「创建模板」
+4. 卡片模板场景选择 **「AI 卡片」**
+5. **无需选择预设模板**，直接点击保存
+6. 复制模板 ID（格式如：`xxxxx-xxxxx-xxxxx.schema`）
+7. 将模板 ID 配置到下面的 `cardTemplateId` 字段
+
+### 配置文件
+
 在 `~/.openclaw/openclaw.json` 中添加：
 
 ```json
@@ -41,8 +56,8 @@ openclaw plugins install -l .
       "clientSecret": "your-app-secret",
       "robotCode": "dingxxxxxx",
       
-      "messageType": "card",
-      "cardTemplateId": "382e4302-551d-4880-bf29-a30acfab2e71.schema",
+      "messageType": "markdown",  // 使用 markdown 模式，或改为 "card" 使用 AI 卡片
+      "cardTemplateId": "你的卡片模板ID",  // 仅当 messageType="card" 时需要，需要自己在钉钉卡片平台创建
       
       "sessionTimeout": 1800000,
       "enableSessionCommands": true,
@@ -58,6 +73,11 @@ openclaw plugins install -l .
   }
 }
 ```
+
+**重要说明：**
+- `cardTemplateId` 不是公共的，需要在你自己的钉钉开放平台创建 AI Card 模板获取
+- 如果没有创建模板，请使用 `"messageType": "markdown"` 模式
+- Markdown 模式同样支持所有功能，只是没有流式显示效果
 
 ## 配置选项
 
