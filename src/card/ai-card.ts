@@ -144,7 +144,7 @@ export async function streamAICard(
   finished: boolean = false,
   log?: Logger
 ): Promise<void> {
-  // 检查是否需要刷新 Token
+  // 检查是否需要刷新 Token（Token 有效期 2 小时，90分钟后刷新）
   const tokenAge = Date.now() - card.createdAt;
   if (tokenAge > TOKEN_REFRESH_THRESHOLD) {
     log?.debug?.('[AICard] Token age exceeds threshold, refreshing...');
@@ -156,17 +156,18 @@ export async function streamAICard(
     }
   }
 
+  // 直接调用 streaming API，使用 key='content'（新版 API）
   const streamBody: AICardStreamingRequest = {
     outTrackId: card.cardInstanceId,
     guid: randomUUID(),
-    key: 'content',
+    key: 'content',  // 新版 API 使用 content
     content,
     isFull: true, // 全量替换
     isFinalize: finished,
     isError: false,
   };
 
-  log?.debug?.(`[AICard] PUT /v1.0/card/streaming contentLen=${content.length} isFinalize=${finished}`);
+  log?.info?.(`[AICard] PUT /v1.0/card/streaming contentLen=${content.length} isFull=true isFinalize=${finished}`);
 
   try {
     const response = await axios.put(`${DINGTALK_API}/v1.0/card/streaming`, streamBody, {
@@ -177,7 +178,7 @@ export async function streamAICard(
       timeout: 10_000,
     });
 
-    log?.debug?.(`[AICard] Streaming response: status=${response.status}`);
+    log?.info?.(`[AICard] Streaming response: status=${response.status}`);
 
     // 更新状态
     card.lastUpdated = Date.now();
@@ -199,10 +200,12 @@ export async function streamAICard(
           },
           timeout: 10_000,
         });
-        log?.debug?.(`[AICard] Retry succeeded: status=${retryResponse.status}`);
+        log?.info?.(`[AICard] Retry succeeded: status=${retryResponse.status}`);
         card.lastUpdated = Date.now();
         if (finished) {
           card.state = AICardStatus.FINISHED;
+        } else if (card.state === AICardStatus.PROCESSING) {
+          card.state = AICardStatus.INPUTING;
         }
         return;
       } catch (retryError) {
@@ -213,6 +216,9 @@ export async function streamAICard(
     card.state = AICardStatus.FAILED;
     card.lastUpdated = Date.now();
     log?.error?.(`[AICard] Streaming failed: ${error instanceof Error ? error.message : error}`);
+    if (axios.isAxiosError(error) && error.response) {
+      log?.error?.(`[AICard] Error response: ${JSON.stringify(error.response.data)}`);
+    }
     throw error;
   }
 }
@@ -224,7 +230,9 @@ export async function streamAICard(
  * @param log 日志器
  */
 export async function finishAICard(card: AICardInstance, content: string, log?: Logger): Promise<void> {
-  log?.debug?.(`[AICard] Finishing card, content length=${content.length}`);
+  log?.info?.(`[AICard] Finishing card, content length=${content.length}`);
+  
+  // 直接用 isFinalize=true 关闭流式通道，API 会自动处理状态更新
   await streamAICard(card, content, true, log);
 }
 

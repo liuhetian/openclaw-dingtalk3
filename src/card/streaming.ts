@@ -45,6 +45,7 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
   });
 
   log?.info?.(`[Streaming] Response: status=${response.status}, ok=${response.ok}`);
+  log?.info?.(`[Streaming] Response headers: content-type=${response.headers.get('content-type')}`);
 
   if (!response.ok || !response.body) {
     const errText = response.body ? await response.text() : '(no body)';
@@ -52,16 +53,30 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
     throw new Error(`Gateway error: ${response.status} - ${errText}`);
   }
 
+  log?.info?.(`[Streaming] 开始读取流...`);
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let chunkCount = 0;
+  let readCount = 0;
 
   while (true) {
+    readCount++;
+    log?.info?.(`[Streaming] 等待 reader.read() #${readCount}...`);
+    
     const { done, value } = await reader.read();
-    if (done) break;
+    
+    log?.info?.(`[Streaming] reader.read() #${readCount} 返回: done=${done}, value.length=${value?.length || 0}`);
+    
+    if (done) {
+      log?.info?.(`[Streaming] 流读取完成 (done=true)`);
+      break;
+    }
 
-    buffer += decoder.decode(value, { stream: true });
+    const rawChunk = decoder.decode(value, { stream: true });
+    log?.info?.(`[Streaming] 原始数据 #${readCount}: "${rawChunk.slice(0, 100)}..."`);
+    
+    buffer += rawChunk;
     const lines = buffer.split('\n');
     buffer = lines.pop() || '';
 
@@ -70,7 +85,7 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
 
       const data = line.slice(6).trim();
       if (data === '[DONE]') {
-        log?.info?.(`[Streaming] Stream completed, total chunks: ${chunkCount}`);
+        log?.info?.(`[Streaming] 收到 [DONE], total chunks: ${chunkCount}`);
         return;
       }
 
@@ -79,18 +94,18 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
         const content = chunk.choices?.[0]?.delta?.content;
         if (content) {
           chunkCount++;
-          if (chunkCount <= 5) {
+          if (chunkCount <= 10) {
             log?.info?.(`[Streaming] Chunk #${chunkCount}: "${content.slice(0, 30)}..."`);
           }
           yield content;
         }
-      } catch {
-        // 忽略解析错误
+      } catch (parseErr) {
+        log?.warn?.(`[Streaming] JSON 解析错误: ${data.slice(0, 50)}...`);
       }
     }
   }
 
-  log?.info?.(`[Streaming] Stream ended, total chunks: ${chunkCount}`);
+  log?.info?.(`[Streaming] Stream ended, total chunks: ${chunkCount}, total reads: ${readCount}`);
 }
 
 /**

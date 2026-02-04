@@ -1,6 +1,6 @@
 {
   "name": "@openclaw/dingtalk",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "DingTalk (钉钉) channel plugin for OpenClaw with true streaming AI Card",
   "main": "index.ts",
   "type": "module",
