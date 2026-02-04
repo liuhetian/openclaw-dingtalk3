@@ -110,7 +110,9 @@ export const dingtalkPlugin = {
       return { targetId: trimmed };
     },
     targetResolver: {
-      looksLikeId: (id: string): boolean => /^[\w+/=-]+$/.test(id),
+      // 支持格式: user:<userId>, group:<conversationId>, 或直接 <conversationId>
+      // conversationId 通常以 cid 开头，可能包含 Base64 字符 (+/=)
+      looksLikeId: (id: string): boolean => /^(user:|group:)?[\w+/:=-]+$/.test(id),
       hint: 'user:<userId> 或 group:<conversationId>',
     },
   },
