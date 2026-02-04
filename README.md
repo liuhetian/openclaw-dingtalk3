@@ -1,6 +1,6 @@
-# DingTalk Channel for OpenClaw - Ultimate Edition
+# DingTalk Channel for OpenClaw
 
-钉钉企业内部机器人 Channel 插件终极版，集百家之长。
+钉钉企业内部机器人 Channel 插件，支持 AI Card 真流式输出。
 
 ## 特性
 
@@ -19,11 +19,11 @@
 
 ```bash
 # 通过远程仓库安装
-openclaw plugins install https://github.com/xxx/openclaw-dingtalk-ultimate.git
+openclaw plugins install https://github.com/liuhetian/openclaw-dingtalk3.git
 
 # 或本地开发模式
-git clone https://github.com/xxx/openclaw-dingtalk-ultimate.git
-cd openclaw-dingtalk-ultimate
+git clone https://github.com/liuhetian/openclaw-dingtalk3.git
+cd openclaw-dingtalk3
 pnpm install
 openclaw plugins install -l .
 ```

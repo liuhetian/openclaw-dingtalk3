@@ -1,7 +1,7 @@
 /**
- * DingTalk Channel Plugin for OpenClaw - Ultimate Edition
+ * DingTalk Channel Plugin for OpenClaw
  *
- * 集百家之长的钉钉 Channel 插件：
+ * 钉钉 Channel 插件：
  * - AI Card 真流式输出（Gateway SSE 直连）
  * - 完整的媒体后处理管道
  * - 会话管理（超时、新会话命令）
@@ -16,7 +16,7 @@ import { registerGatewayMethods } from './src/gateway/methods.js';
 
 const plugin = {
   id: 'dingtalk',
-  name: 'DingTalk Channel (Ultimate)',
+  name: 'DingTalk Channel',
   description: 'DingTalk (钉钉) messaging channel via Stream mode with true streaming AI Card',
 
   configSchema: {
@@ -40,7 +40,7 @@ const plugin = {
     registerGatewayMethods(api);
     console.log('[DingTalk] Gateway Methods 已注册');
     
-    api.logger?.info('[DingTalk] Ultimate edition plugin registered');
+    api.logger?.info('[DingTalk] Plugin registered');
     console.log('[DingTalk] ========== 插件注册完成 ==========');
   },
 };

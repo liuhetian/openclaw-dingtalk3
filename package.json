@@ -1,7 +1,7 @@
 {
-  "name": "@openclaw/dingtalk-ultimate",
-  "version": "1.0.1",
-  "description": "DingTalk (钉钉) channel plugin for OpenClaw - Ultimate edition with true streaming AI Card",
+  "name": "@openclaw/dingtalk",
+  "version": "1.0.2",
+  "description": "DingTalk (钉钉) channel plugin for OpenClaw with true streaming AI Card",
   "main": "index.ts",
   "type": "module",
   "scripts": {
@@ -57,7 +57,7 @@
       ]
     },
     "install": {
-      "npmSpec": "@openclaw/dingtalk-ultimate",
+      "npmSpec": "@openclaw/dingtalk",
       "localPath": "extensions/dingtalk",
       "defaultChoice": "local"
     }
