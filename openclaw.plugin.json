@@ -1,7 +1,7 @@
 {
   "id": "dingtalk-ultimate",
   "name": "DingTalk Channel (Ultimate)",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DingTalk (钉钉) messaging channel via Stream mode with true streaming AI Card",
   "author": "OpenClaw Community",
   "channels": ["dingtalk-ultimate"],
