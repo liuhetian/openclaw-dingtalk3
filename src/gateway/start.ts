@@ -80,7 +80,24 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
     // 异步处理消息（不阻塞回调确认）
     try {
       log?.info?.(`[DingTalk] 开始处理消息, data length=${response.data.length}`);
+      
+      // 打印原始数据以便调试引用消息问题
+      log?.info?.(`[DingTalk] 原始 response.data: ${response.data.substring(0, 2000)}`);
+      
       const data = JSON.parse(response.data) as DingTalkInboundMessage;
+      
+      // 打印解析后的关键字段
+      const dataAny = data as any;
+      log?.info?.(`[DingTalk] 解析后 msgtype: ${data.msgtype}`);
+      log?.info?.(`[DingTalk] 解析后 text 字段: ${JSON.stringify(data.text)}`);
+      log?.info?.(`[DingTalk] 解析后 content 字段: ${JSON.stringify(data.content)}`);
+      if (dataAny.text?.isReplyMsg !== undefined) {
+        log?.info?.(`[DingTalk] text.isReplyMsg: ${dataAny.text.isReplyMsg}`);
+      }
+      if (dataAny.text?.repliedMsg !== undefined) {
+        log?.info?.(`[DingTalk] text.repliedMsg: ${JSON.stringify(dataAny.text.repliedMsg)}`);
+      }
+      
       await handleDingTalkMessage({
         cfg,
         accountId: account.accountId,

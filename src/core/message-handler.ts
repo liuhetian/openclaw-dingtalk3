@@ -35,6 +35,26 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
 
   log?.info?.('[Handler] 收到消息处理请求');
   log?.info?.('[Handler] Full inbound data:', JSON.stringify(maskSensitiveData(data)));
+  
+  // 调试：专门打印 text 字段，检查是否包含引用消息
+  if (data.text) {
+    log?.info?.(`[Handler] data.text 原始内容: ${JSON.stringify(data.text)}`);
+    const textAny = data.text as any;
+    log?.info?.(`[Handler] data.text.isReplyMsg: ${textAny.isReplyMsg}`);
+    log?.info?.(`[Handler] data.text.repliedMsg 存在: ${!!textAny.repliedMsg}`);
+  }
+  // 调试：打印 content 字段
+  if (data.content) {
+    log?.info?.(`[Handler] data.content 原始内容: ${JSON.stringify(data.content)}`);
+  }
+  // 调试：检查消息是否有其他引用相关字段
+  const dataAny = data as any;
+  if (dataAny.isReplyMsg !== undefined) {
+    log?.info?.(`[Handler] data.isReplyMsg (顶层): ${dataAny.isReplyMsg}`);
+  }
+  if (dataAny.repliedMsg !== undefined) {
+    log?.info?.(`[Handler] data.repliedMsg (顶层): ${JSON.stringify(dataAny.repliedMsg)}`);
+  }
 
   // 清理过期卡片缓存
   cleanupCardCache();
@@ -331,8 +351,24 @@ function extractMessageContent(data: DingTalkInboundMessage, log?: Logger): Mess
   let baseText = '';
   let quotedPrefix = '';
 
-  // 1. 先处理引用消息
-  if (data.text?.isReplyMsg) {
+  // 调试：打印完整的 text 对象结构
+  if (data.text) {
+    log?.info?.(`[Handler] text 对象完整结构: ${JSON.stringify(data.text)}`);
+  }
+
+  // 1. 先处理引用消息 - 使用 as any 绕过类型检查，因为钉钉返回的数据可能有额外字段
+  const textObj = data.text as any;
+  const dataAny = data as any;
+  
+  // 检查多个可能的引用消息位置
+  const hasReplyInText = textObj?.isReplyMsg === true;
+  const hasReplyAtTop = dataAny?.isReplyMsg === true;
+  const hasRepliedMsgInText = !!textObj?.repliedMsg;
+  const hasRepliedMsgAtTop = !!dataAny?.repliedMsg;
+  
+  log?.info?.(`[Handler] 引用消息检测: text.isReplyMsg=${hasReplyInText}, top.isReplyMsg=${hasReplyAtTop}, text.repliedMsg=${hasRepliedMsgInText}, top.repliedMsg=${hasRepliedMsgAtTop}`);
+  
+  if (hasReplyInText || hasReplyAtTop || hasRepliedMsgInText || hasRepliedMsgAtTop) {
     log?.info?.('[Handler] 检测到引用回复消息');
     quotedPrefix = extractQuotedContent(data, log);
   }
@@ -416,9 +452,17 @@ function extractMessageContent(data: DingTalkInboundMessage, log?: Logger): Mess
  */
 function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): string {
   try {
-    const repliedMsg = data.text?.repliedMsg;
+    // 使用 as any 绕过类型检查
+    const textObj = data.text as any;
+    const dataAny = data as any;
+    
+    // 尝试从多个位置获取 repliedMsg
+    const repliedMsg = textObj?.repliedMsg || dataAny?.repliedMsg;
+    
+    log?.info?.(`[Handler] repliedMsg 完整结构: ${JSON.stringify(repliedMsg)}`);
+    
     if (!repliedMsg) {
-      log?.info?.('[Handler] 引用消息标记存在但无 repliedMsg 字段');
+      log?.info?.('[Handler] 引用消息标记存在但无 repliedMsg 字段 (已检查 text.repliedMsg 和顶层 repliedMsg)');
       return '';
     }
 
@@ -427,6 +471,7 @@ function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): strin
     // 提取被引用的消息内容
     if (repliedMsg.content) {
       const content = repliedMsg.content;
+      log?.info?.(`[Handler] repliedMsg.content 类型: ${typeof content}, 值: ${JSON.stringify(content)}`);
 
       // richText 格式：数组包含文本和图片
       if (typeof content === 'object' && content.richText && Array.isArray(content.richText)) {
@@ -451,11 +496,11 @@ function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): strin
     }
 
     if (quotedContent) {
-      log?.info?.(`[Handler] 提取引用内容: ${quotedContent.slice(0, 50)}...`);
+      log?.info?.(`[Handler] 提取引用内容成功: ${quotedContent.slice(0, 50)}...`);
       return `[引用回复: "${quotedContent.trim()}"]`;
     }
 
-    log?.info?.('[Handler] 引用消息存在但无法提取内容');
+    log?.info?.('[Handler] 引用消息存在但无法提取内容, repliedMsg: ' + JSON.stringify(repliedMsg));
     return '';
   } catch (err) {
     log?.warn?.(`[Handler] 提取引用消息失败: ${err}`);
@@ -468,10 +513,14 @@ function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): strin
  */
 function extractChatRecord(data: DingTalkInboundMessage, log?: Logger): string {
   try {
-    const chatRecordStr = data.content?.chatRecord;
+    // 尝试多种方式获取 chatRecord
+    const chatRecordContent = data.content || (data as any).chatRecord;
+    log?.info?.(`[Handler] chatRecord content 结构: ${JSON.stringify(chatRecordContent)}`);
+    
+    const chatRecordStr = chatRecordContent?.chatRecord;
     
     if (!chatRecordStr || typeof chatRecordStr !== 'string') {
-      log?.info?.('[Handler] chatRecord 消息无有效内容');
+      log?.info?.('[Handler] chatRecord 消息无有效内容 (chatRecord字段不是字符串)');
       return '[聊天记录合集]';
     }
 
