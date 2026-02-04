@@ -19,7 +19,7 @@ import { streamAICard, finishAICard } from '../card/ai-card.js';
 import { getOrCreateCard, cleanupCardCache } from '../card/card-cache.js';
 import { streamFromGateway, buildMediaSystemPrompt } from '../card/streaming.js';
 import { processPostPipeline } from '../post-process/pipeline.js';
-import { normalizeAllowFrom, isSenderAllowed, maskSensitiveData } from '../utils/helpers.js';
+import { normalizeAllowFrom, isSenderAllowed } from '../utils/helpers.js';
 import { noteGroupMember, formatGroupMembers } from '../group/members.js';
 import { resolveGroupConfig } from '../group/config.js';
 
@@ -34,26 +34,24 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
   setCurrentLogger(log);
 
   log?.info?.('[Handler] 收到消息处理请求');
-  log?.info?.('[Handler] Full inbound data:', JSON.stringify(maskSensitiveData(data)));
   
-  // 调试：专门打印 text 字段，检查是否包含引用消息
-  if (data.text) {
-    log?.info?.(`[Handler] data.text 原始内容: ${JSON.stringify(data.text)}`);
-    const textAny = data.text as any;
-    log?.info?.(`[Handler] data.text.isReplyMsg: ${textAny.isReplyMsg}`);
-    log?.info?.(`[Handler] data.text.repliedMsg 存在: ${!!textAny.repliedMsg}`);
-  }
-  // 调试：打印 content 字段
-  if (data.content) {
-    log?.info?.(`[Handler] data.content 原始内容: ${JSON.stringify(data.content)}`);
-  }
-  // 调试：检查消息是否有其他引用相关字段
-  const dataAny = data as any;
-  if (dataAny.isReplyMsg !== undefined) {
-    log?.info?.(`[Handler] data.isReplyMsg (顶层): ${dataAny.isReplyMsg}`);
-  }
-  if (dataAny.repliedMsg !== undefined) {
-    log?.info?.(`[Handler] data.repliedMsg (顶层): ${JSON.stringify(dataAny.repliedMsg)}`);
+  // 调试：专门打印 text 字段的完整内容（这是引用消息的关键）
+  const textAny = data.text as any;
+  if (textAny) {
+    // 分开打印避免日志被截断
+    log?.info?.(`[Handler] TEXT.content: ${textAny.content}`);
+    log?.info?.(`[Handler] TEXT.isReplyMsg: ${textAny.isReplyMsg}`);
+    if (textAny.repliedMsg) {
+      // 打印 repliedMsg 的键
+      const repliedMsgKeys = Object.keys(textAny.repliedMsg);
+      log?.info?.(`[Handler] TEXT.repliedMsg 的键: [${repliedMsgKeys.join(', ')}]`);
+      // 分开打印每个键的值
+      for (const key of repliedMsgKeys) {
+        const val = textAny.repliedMsg[key];
+        const valStr = typeof val === 'object' ? JSON.stringify(val).substring(0, 300) : String(val);
+        log?.info?.(`[Handler] TEXT.repliedMsg.${key}: ${valStr}`);
+      }
+    }
   }
 
   // 清理过期卡片缓存
@@ -459,7 +457,12 @@ function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): strin
     // 尝试从多个位置获取 repliedMsg
     const repliedMsg = textObj?.repliedMsg || dataAny?.repliedMsg;
     
-    log?.info?.(`[Handler] repliedMsg 完整结构: ${JSON.stringify(repliedMsg)}`);
+    // 打印 repliedMsg 的所有键，帮助调试
+    if (repliedMsg) {
+      const keys = Object.keys(repliedMsg);
+      log?.info?.(`[Handler] repliedMsg 的键: ${keys.join(', ')}`);
+      log?.info?.(`[Handler] repliedMsg 完整结构: ${JSON.stringify(repliedMsg).substring(0, 500)}`);
+    }
     
     if (!repliedMsg) {
       log?.info?.('[Handler] 引用消息标记存在但无 repliedMsg 字段 (已检查 text.repliedMsg 和顶层 repliedMsg)');
@@ -468,10 +471,10 @@ function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): strin
 
     let quotedContent = '';
 
-    // 提取被引用的消息内容
+    // 方式1: repliedMsg.content 存在
     if (repliedMsg.content) {
       const content = repliedMsg.content;
-      log?.info?.(`[Handler] repliedMsg.content 类型: ${typeof content}, 值: ${JSON.stringify(content)}`);
+      log?.info?.(`[Handler] repliedMsg.content 类型: ${typeof content}`);
 
       // richText 格式：数组包含文本和图片
       if (typeof content === 'object' && content.richText && Array.isArray(content.richText)) {
@@ -494,13 +497,58 @@ function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): strin
         quotedContent = content;
       }
     }
+    
+    // 方式2: repliedMsg.text 直接存在（另一种可能的结构）
+    if (!quotedContent && repliedMsg.text) {
+      log?.info?.(`[Handler] 尝试 repliedMsg.text: ${JSON.stringify(repliedMsg.text).substring(0, 200)}`);
+      if (typeof repliedMsg.text === 'string') {
+        quotedContent = repliedMsg.text;
+      } else if (repliedMsg.text.content) {
+        quotedContent = repliedMsg.text.content;
+      }
+    }
+    
+    // 方式3: repliedMsg.richText 直接存在
+    if (!quotedContent && repliedMsg.richText && Array.isArray(repliedMsg.richText)) {
+      log?.info?.(`[Handler] 尝试 repliedMsg.richText`);
+      const parts: string[] = [];
+      for (const item of repliedMsg.richText) {
+        if (item.msgType === 'text' && item.content) {
+          parts.push(item.content);
+        } else if (item.type === 'text' && item.text) {
+          parts.push(item.text);
+        } else if (item.msgType === 'picture' || item.type === 'picture') {
+          parts.push('[图片]');
+        }
+      }
+      quotedContent = parts.join('');
+    }
+    
+    // 方式4: repliedMsg 直接是字符串
+    if (!quotedContent && typeof repliedMsg === 'string') {
+      quotedContent = repliedMsg;
+    }
+    
+    // 方式5: repliedMsg.body 或其他可能的字段
+    if (!quotedContent) {
+      const possibleFields = ['body', 'message', 'msg', 'value', 'data'];
+      for (const field of possibleFields) {
+        if (repliedMsg[field]) {
+          log?.info?.(`[Handler] 尝试 repliedMsg.${field}`);
+          if (typeof repliedMsg[field] === 'string') {
+            quotedContent = repliedMsg[field];
+            break;
+          }
+        }
+      }
+    }
 
     if (quotedContent) {
       log?.info?.(`[Handler] 提取引用内容成功: ${quotedContent.slice(0, 50)}...`);
       return `[引用回复: "${quotedContent.trim()}"]`;
     }
 
-    log?.info?.('[Handler] 引用消息存在但无法提取内容, repliedMsg: ' + JSON.stringify(repliedMsg));
+    log?.info?.('[Handler] 引用消息存在但无法提取内容');
     return '';
   } catch (err) {
     log?.warn?.(`[Handler] 提取引用消息失败: ${err}`);
