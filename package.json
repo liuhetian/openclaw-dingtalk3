@@ -1,6 +1,6 @@
 {
   "name": "@openclaw/dingtalk-ultimate",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "DingTalk (钉钉) channel plugin for OpenClaw - Ultimate edition with true streaming AI Card",
   "main": "index.ts",
   "type": "module",
