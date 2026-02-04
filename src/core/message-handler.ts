@@ -46,7 +46,7 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
   }
 
   // 2. 解析消息内容
-  const content = extractMessageContent(data);
+  const content = extractMessageContent(data, log);
   if (!content.text) {
     log?.info?.('[Handler] 空消息内容，跳过处理');
     return;
@@ -325,12 +325,26 @@ interface MessageHandlerContext {
 /**
  * 解析消息内容
  */
-function extractMessageContent(data: DingTalkInboundMessage): MessageContent {
+function extractMessageContent(data: DingTalkInboundMessage, log?: Logger): MessageContent {
   const msgtype = data.msgtype || 'text';
 
+  let baseText = '';
+  let quotedPrefix = '';
+
+  // 1. 先处理引用消息
+  if (data.text?.isReplyMsg) {
+    log?.info?.('[Handler] 检测到引用回复消息');
+    quotedPrefix = extractQuotedContent(data, log);
+  }
+
+  // 2. 根据消息类型提取主体内容
   switch (msgtype) {
     case 'text':
-      return { text: data.text?.content?.trim() || '', messageType: 'text' };
+      baseText = data.text?.content?.trim() || '';
+      return { 
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText, 
+        messageType: 'text' 
+      };
 
     case 'richText': {
       const parts = data.content?.richText || [];
@@ -339,33 +353,191 @@ function extractMessageContent(data: DingTalkInboundMessage): MessageContent {
         if (part.type === 'text' && part.text) text += part.text;
         if (part.type === 'at' && part.atName) text += `@${part.atName} `;
       }
-      return { text: text.trim() || '[富文本消息]', messageType: 'richText' };
+      baseText = text.trim() || '[富文本消息]';
+      return { 
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText, 
+        messageType: 'richText' 
+      };
+    }
+
+    case 'chatRecord': {
+      // 处理转发的聊天记录合集
+      const chatRecordText = extractChatRecord(data, log);
+      return { text: chatRecordText, messageType: 'chatRecord' };
     }
 
     case 'picture':
-      return { text: '[图片]', mediaPath: data.content?.downloadCode, mediaType: 'image', messageType: 'picture' };
+      baseText = '[图片]';
+      return { 
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText, 
+        mediaPath: data.content?.downloadCode, 
+        mediaType: 'image', 
+        messageType: 'picture' 
+      };
 
     case 'audio':
+      baseText = data.content?.recognition || '[语音消息]';
       return {
-        text: data.content?.recognition || '[语音消息]',
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText,
         mediaPath: data.content?.downloadCode,
         mediaType: 'audio',
         messageType: 'audio',
       };
 
     case 'video':
-      return { text: '[视频]', mediaPath: data.content?.downloadCode, mediaType: 'video', messageType: 'video' };
+      baseText = '[视频]';
+      return { 
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText, 
+        mediaPath: data.content?.downloadCode, 
+        mediaType: 'video', 
+        messageType: 'video' 
+      };
 
     case 'file':
+      baseText = `[文件: ${data.content?.fileName || '文件'}]`;
       return {
-        text: `[文件: ${data.content?.fileName || '文件'}]`,
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText,
         mediaPath: data.content?.downloadCode,
         mediaType: 'file',
         messageType: 'file',
       };
 
     default:
-      return { text: data.text?.content?.trim() || `[${msgtype}消息]`, messageType: msgtype };
+      baseText = data.text?.content?.trim() || `[${msgtype}消息]`;
+      return { 
+        text: quotedPrefix ? `${quotedPrefix}\n${baseText}` : baseText, 
+        messageType: msgtype 
+      };
+  }
+}
+
+/**
+ * 提取引用消息内容
+ */
+function extractQuotedContent(data: DingTalkInboundMessage, log?: Logger): string {
+  try {
+    const repliedMsg = data.text?.repliedMsg;
+    if (!repliedMsg) {
+      log?.info?.('[Handler] 引用消息标记存在但无 repliedMsg 字段');
+      return '';
+    }
+
+    let quotedContent = '';
+
+    // 提取被引用的消息内容
+    if (repliedMsg.content) {
+      const content = repliedMsg.content;
+
+      // richText 格式：数组包含文本和图片
+      if (typeof content === 'object' && content.richText && Array.isArray(content.richText)) {
+        const parts: string[] = [];
+        for (const item of content.richText) {
+          if (item.msgType === 'text' && item.content) {
+            parts.push(item.content);
+          } else if (item.msgType === 'picture') {
+            parts.push('[图片]');
+          }
+        }
+        quotedContent = parts.join('');
+      }
+      // text 字段
+      else if (typeof content === 'object' && content.text) {
+        quotedContent = content.text;
+      }
+      // 字符串格式
+      else if (typeof content === 'string') {
+        quotedContent = content;
+      }
+    }
+
+    if (quotedContent) {
+      log?.info?.(`[Handler] 提取引用内容: ${quotedContent.slice(0, 50)}...`);
+      return `[引用回复: "${quotedContent.trim()}"]`;
+    }
+
+    log?.info?.('[Handler] 引用消息存在但无法提取内容');
+    return '';
+  } catch (err) {
+    log?.warn?.(`[Handler] 提取引用消息失败: ${err}`);
+    return '';
+  }
+}
+
+/**
+ * 提取聊天记录合集 (转发消息)
+ */
+function extractChatRecord(data: DingTalkInboundMessage, log?: Logger): string {
+  try {
+    const chatRecordStr = data.content?.chatRecord;
+    
+    if (!chatRecordStr || typeof chatRecordStr !== 'string') {
+      log?.info?.('[Handler] chatRecord 消息无有效内容');
+      return '[聊天记录合集]';
+    }
+
+    const records = JSON.parse(chatRecordStr) as Array<{
+      senderId?: string;
+      senderStaffId?: string;
+      senderNick?: string;
+      msgType?: string;
+      content?: string;
+      downloadCode?: string;
+      createAt?: number;
+    }>;
+
+    if (!Array.isArray(records) || records.length === 0) {
+      log?.info?.('[Handler] chatRecord 解析为空数组');
+      return '[聊天记录合集]';
+    }
+
+    log?.info?.(`[Handler] chatRecord 包含 ${records.length} 条消息`);
+
+    // 格式化每条记录
+    const formattedRecords = records.map((record, idx) => {
+      // 获取发送者名称
+      const sender = record.senderNick || '未知';
+
+      // 根据消息类型处理内容
+      let msgContent: string;
+      switch (record.msgType) {
+        case 'text':
+          msgContent = record.content || '[空消息]';
+          break;
+        case 'picture':
+        case 'image':
+          msgContent = '[图片]';
+          break;
+        case 'video':
+          msgContent = '[视频]';
+          break;
+        case 'file':
+          msgContent = '[文件]';
+          break;
+        case 'voice':
+        case 'audio':
+          msgContent = '[语音]';
+          break;
+        case 'richText':
+          msgContent = record.content || '[富文本消息]';
+          break;
+        case 'markdown':
+          msgContent = record.content || '[Markdown消息]';
+          break;
+        default:
+          msgContent = record.content || `[${record.msgType || '未知'}消息]`;
+      }
+
+      // 格式化时间
+      const time = record.createAt ? new Date(record.createAt).toLocaleString('zh-CN') : '';
+      return `[${idx + 1}] ${sender}${time ? ` (${time})` : ''}: ${msgContent}`;
+    });
+
+    const result = `[聊天记录合集 - ${records.length}条消息]\n${formattedRecords.join('\n')}`;
+    log?.info?.(`[Handler] chatRecord 格式化完成`);
+    return result;
+  } catch (err) {
+    log?.warn?.(`[Handler] 解析 chatRecord 失败: ${err}`);
+    return '[聊天记录合集]';
   }
 }
 

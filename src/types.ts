@@ -125,6 +125,19 @@ export interface DingTalkInboundMessage {
   // 消息内容
   text?: {
     content: string;
+    /** 是否为引用回复消息 */
+    isReplyMsg?: boolean;
+    /** 被引用的消息内容 */
+    repliedMsg?: {
+      content?: {
+        richText?: Array<{
+          msgType: string;
+          content?: string;
+          downloadCode?: string;
+        }>;
+        text?: string;
+      } | string;
+    };
   };
   content?: {
     richText?: Array<{
@@ -135,7 +148,20 @@ export interface DingTalkInboundMessage {
     downloadCode?: string;
     fileName?: string;
     recognition?: string;
+    /** 聊天记录合集 (JSON 字符串) */
+    chatRecord?: string;
   };
+}
+
+/** 聊天记录中的单条消息 */
+export interface ChatRecordItem {
+  senderId?: string;
+  senderStaffId?: string;
+  senderNick?: string;
+  msgType?: string;
+  content?: string;
+  downloadCode?: string;
+  createAt?: number;
 }
 
 /** 解析后的消息内容 */
