@@ -1,0 +1,64 @@
+{
+  "name": "@openclaw/dingtalk-ultimate",
+  "version": "1.0.0",
+  "description": "DingTalk (钉钉) channel plugin for OpenClaw - Ultimate edition with true streaming AI Card",
+  "main": "index.ts",
+  "type": "module",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "lint": "eslint index.ts src/",
+    "lint:fix": "eslint --fix index.ts src/ && prettier --write index.ts src/"
+  },
+  "keywords": [
+    "openclaw",
+    "dingtalk",
+    "channel",
+    "stream",
+    "ai-card",
+    "钉钉",
+    "bot"
+  ],
+  "author": "OpenClaw Community",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dingtalk-stream": "^2.1.4",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.3.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "channels": [
+      "dingtalk"
+    ],
+    "installDependencies": true,
+    "channel": {
+      "id": "dingtalk",
+      "label": "DingTalk",
+      "selectionLabel": "DingTalk (钉钉)",
+      "docsPath": "/channels/dingtalk",
+      "docsLabel": "dingtalk",
+      "blurb": "钉钉企业内部机器人，Stream 模式 + AI Card 真流式输出，无需公网 IP。",
+      "order": 70,
+      "aliases": [
+        "dd",
+        "ding"
+      ]
+    },
+    "install": {
+      "npmSpec": "@openclaw/dingtalk-ultimate",
+      "localPath": "extensions/dingtalk-ultimate",
+      "defaultChoice": "local"
+    }
+  }
+}

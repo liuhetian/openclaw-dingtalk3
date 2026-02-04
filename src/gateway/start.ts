@@ -1,0 +1,159 @@
+/**
+ * Gateway Start
+ * DingTalk Stream Client 启动和管理
+ */
+
+import { DWClient, TOPIC_ROBOT } from 'dingtalk-stream';
+import type {
+  DingTalkConfig,
+  DingTalkInboundMessage,
+  GatewayStartContext,
+  GatewayStopResult,
+  OpenClawConfig,
+} from '../types.js';
+import { handleDingTalkMessage } from '../core/message-handler.js';
+import { isMessageProcessed, markMessageProcessed, cleanupProcessedMessages } from '../session/manager.js';
+import { cleanupOrphanedTempFiles } from '../utils/helpers.js';
+
+/**
+ * 启动 DingTalk Stream 账户
+ * @param ctx Gateway 启动上下文
+ */
+export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<GatewayStopResult> {
+  const { account, cfg, abortSignal, log } = ctx;
+  const config = account.config;
+
+  if (!config.clientId || !config.clientSecret) {
+    throw new Error('DingTalk clientId and clientSecret are required');
+  }
+
+  log?.info?.(`[${account.accountId}] Starting DingTalk Stream client...`);
+
+  // 清理孤立的临时文件
+  await cleanupOrphanedTempFiles(log);
+
+  // 创建 Stream 客户端
+  const client = new DWClient({
+    clientId: config.clientId,
+    clientSecret: config.clientSecret,
+    debug: config.debug || false,
+    keepAlive: true,
+  });
+
+  // 注册消息回调
+  client.registerCallbackListener(TOPIC_ROBOT, async (res: unknown) => {
+    const response = res as { headers?: { messageId?: string }; data: string };
+    const messageId = response.headers?.messageId;
+
+    log?.debug?.(`[DingTalk] Stream callback received, messageId=${messageId}`);
+
+    // 立即确认回调，避免钉钉服务器超时重发
+    if (messageId) {
+      client.socketCallBackResponse(messageId, { success: true });
+      log?.debug?.(`[DingTalk] Callback acknowledged: ${messageId}`);
+    }
+
+    // 消息去重检查
+    if (messageId && isMessageProcessed(messageId)) {
+      log?.warn?.(`[DingTalk] Duplicate message skipped: ${messageId}`);
+      return;
+    }
+
+    // 标记消息为已处理
+    if (messageId) {
+      markMessageProcessed(messageId);
+    }
+
+    // 异步处理消息
+    try {
+      const data = JSON.parse(response.data) as DingTalkInboundMessage;
+      await handleDingTalkMessage({
+        cfg,
+        accountId: account.accountId,
+        data,
+        sessionWebhook: data.sessionWebhook,
+        log,
+        dingtalkConfig: config,
+      });
+    } catch (error) {
+      log?.error?.(`[DingTalk] Error processing message: ${error instanceof Error ? error.message : error}`);
+    }
+  });
+
+  // 连接 Stream
+  await client.connect();
+  log?.info?.(`[${account.accountId}] DingTalk Stream client connected`);
+
+  // 停止标志
+  let stopped = false;
+
+  // 注册中止信号处理
+  if (abortSignal) {
+    abortSignal.addEventListener(
+      'abort',
+      () => {
+        if (stopped) return;
+        stopped = true;
+        log?.info?.(`[${account.accountId}] Stopping DingTalk Stream client...`);
+        cleanupProcessedMessages();
+      },
+      { once: true }
+    );
+  }
+
+  return {
+    stop: () => {
+      if (stopped) return;
+      stopped = true;
+      log?.info?.(`[${account.accountId}] DingTalk provider stopped`);
+      cleanupProcessedMessages();
+    },
+  };
+}
+
+/**
+ * 检查配置是否完整
+ * @param cfg OpenClaw 配置
+ * @param accountId 账户 ID
+ */
+export function isConfigured(cfg: OpenClawConfig, accountId?: string): boolean {
+  const config = getConfig(cfg, accountId);
+  return Boolean(config.clientId && config.clientSecret);
+}
+
+/**
+ * 获取钉钉配置
+ * @param cfg OpenClaw 配置
+ * @param accountId 账户 ID
+ */
+export function getConfig(cfg: OpenClawConfig, accountId?: string): DingTalkConfig {
+  const dingtalkCfg = cfg?.channels?.dingtalk;
+  if (!dingtalkCfg) return {} as DingTalkConfig;
+
+  // 检查是否为多账户配置
+  if ('accounts' in dingtalkCfg && dingtalkCfg.accounts && accountId) {
+    const accountConfig = dingtalkCfg.accounts[accountId];
+    if (accountConfig) return accountConfig;
+  }
+
+  return dingtalkCfg as DingTalkConfig;
+}
+
+/**
+ * 探测钉钉连接状态
+ * @param cfg OpenClaw 配置
+ */
+export async function probeDingTalk(cfg: OpenClawConfig): Promise<{ ok: boolean; error?: string; details?: unknown }> {
+  if (!isConfigured(cfg)) {
+    return { ok: false, error: 'Not configured' };
+  }
+
+  try {
+    const config = getConfig(cfg);
+    const { getAccessToken } = await import('../api/token.js');
+    await getAccessToken(config);
+    return { ok: true, details: { clientId: config.clientId } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
