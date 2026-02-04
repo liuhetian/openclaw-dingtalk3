@@ -45,17 +45,18 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
     const response = res as { headers?: { messageId?: string }; data: string };
     const messageId = response.headers?.messageId;
 
-    log?.debug?.(`[DingTalk] Stream callback received, messageId=${messageId}`);
+    log?.info?.(`[DingTalk] Stream callback received, messageId=${messageId}`);
 
-    // 立即确认回调，避免钉钉服务器超时重发
+    // 【关键修复】立即确认回调，避免钉钉服务器超时重发
+    // 钉钉 Stream 模式要求及时响应，否则约60秒后会重发消息
     if (messageId) {
       client.socketCallBackResponse(messageId, { success: true });
-      log?.debug?.(`[DingTalk] Callback acknowledged: ${messageId}`);
+      log?.info?.(`[DingTalk] 已立即确认回调: messageId=${messageId}`);
     }
 
     // 消息去重检查
     if (messageId && isMessageProcessed(messageId)) {
-      log?.warn?.(`[DingTalk] Duplicate message skipped: ${messageId}`);
+      log?.warn?.(`[DingTalk] 检测到重复消息，跳过处理: messageId=${messageId}`);
       return;
     }
 
@@ -64,8 +65,9 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
       markMessageProcessed(messageId);
     }
 
-    // 异步处理消息
+    // 异步处理消息（不阻塞回调确认）
     try {
+      log?.info?.(`[DingTalk] 开始处理消息, data length=${response.data.length}`);
       const data = JSON.parse(response.data) as DingTalkInboundMessage;
       await handleDingTalkMessage({
         cfg,
@@ -76,7 +78,8 @@ export async function startDingTalkAccount(ctx: GatewayStartContext): Promise<Ga
         dingtalkConfig: config,
       });
     } catch (error) {
-      log?.error?.(`[DingTalk] Error processing message: ${error instanceof Error ? error.message : error}`);
+      log?.error?.(`[DingTalk] 处理消息异常: ${error instanceof Error ? error.message : error}`);
+      // 注意：即使处理失败，也不需要再次响应（已经提前确认了）
     }
   });
 

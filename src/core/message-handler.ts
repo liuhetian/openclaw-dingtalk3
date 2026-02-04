@@ -33,21 +33,22 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
   // 保存日志器引用
   setCurrentLogger(log);
 
-  log?.debug?.('[Handler] Full inbound data:', JSON.stringify(maskSensitiveData(data)));
+  log?.info?.('[Handler] 收到消息处理请求');
+  log?.info?.('[Handler] Full inbound data:', JSON.stringify(maskSensitiveData(data)));
 
   // 清理过期卡片缓存
   cleanupCardCache();
 
   // 1. 过滤机器人自身消息
   if (data.senderId === data.chatbotUserId || data.senderStaffId === data.chatbotUserId) {
-    log?.debug?.('[Handler] Ignoring robot self-message');
+    log?.info?.('[Handler] 忽略机器人自身消息');
     return;
   }
 
   // 2. 解析消息内容
   const content = extractMessageContent(data);
   if (!content.text) {
-    log?.debug?.('[Handler] Empty message content, skipping');
+    log?.info?.('[Handler] 空消息内容，跳过处理');
     return;
   }
 
@@ -80,7 +81,7 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
   // 5. 获取会话上下文
   const sessionTimeout = dingtalkConfig.sessionTimeout || 30 * 60 * 1000;
   const { sessionKey, isNew } = getSessionKey(senderId, false, sessionTimeout, log);
-  log?.debug?.(`[Handler] Session: key=${sessionKey}, isNew=${isNew}`);
+  log?.info?.(`[Handler] Session: key=${sessionKey}, isNew=${isNew}`);
 
   // 6. 群组特性处理
   if (!isDirect) {

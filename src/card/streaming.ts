@@ -44,7 +44,7 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
     }),
   });
 
-  log?.debug?.(`[Streaming] Response: status=${response.status}, ok=${response.ok}`);
+  log?.info?.(`[Streaming] Response: status=${response.status}, ok=${response.ok}`);
 
   if (!response.ok || !response.body) {
     const errText = response.body ? await response.text() : '(no body)';
@@ -70,7 +70,7 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
 
       const data = line.slice(6).trim();
       if (data === '[DONE]') {
-        log?.debug?.(`[Streaming] Stream completed, total chunks: ${chunkCount}`);
+        log?.info?.(`[Streaming] Stream completed, total chunks: ${chunkCount}`);
         return;
       }
 
@@ -79,8 +79,8 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
         const content = chunk.choices?.[0]?.delta?.content;
         if (content) {
           chunkCount++;
-          if (chunkCount <= 3) {
-            log?.debug?.(`[Streaming] Chunk #${chunkCount}: "${content.slice(0, 30)}..."`);
+          if (chunkCount <= 5) {
+            log?.info?.(`[Streaming] Chunk #${chunkCount}: "${content.slice(0, 30)}..."`);
           }
           yield content;
         }
@@ -90,7 +90,7 @@ export async function* streamFromGateway(options: GatewayStreamOptions): AsyncGe
     }
   }
 
-  log?.debug?.(`[Streaming] Stream ended, total chunks: ${chunkCount}`);
+  log?.info?.(`[Streaming] Stream ended, total chunks: ${chunkCount}`);
 }
 
 /**
