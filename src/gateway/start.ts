@@ -145,28 +145,9 @@ export function isConfigured(cfg: OpenClawConfig, accountId?: string): boolean {
  * @param accountId 账户 ID
  */
 export function getConfig(cfg: OpenClawConfig, accountId?: string): DingTalkConfig {
-  // 调试：打印所有可用的 channels
-  const availableChannels = Object.keys(cfg?.channels || {});
-  console.log('[DingTalk][getConfig] ====== 配置检查 ======');
-  console.log('[DingTalk][getConfig] 可用 channels:', availableChannels.join(', ') || '(无)');
-  
   const dingtalkCfg = cfg?.channels?.dingtalk;
-  console.log('[DingTalk][getConfig] channels.dingtalk:', dingtalkCfg ? '存在' : '不存在');
-  
+
   if (!dingtalkCfg) {
-    console.log('[DingTalk][getConfig] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-    console.log('[DingTalk][getConfig] 错误: channels.dingtalk 配置不存在!');
-    console.log('[DingTalk][getConfig] 请在 ~/.openclaw/openclaw.json 中添加:');
-    console.log('[DingTalk][getConfig] {');
-    console.log('[DingTalk][getConfig]   "channels": {');
-    console.log('[DingTalk][getConfig]     "dingtalk": {');
-    console.log('[DingTalk][getConfig]       "enabled": true,');
-    console.log('[DingTalk][getConfig]       "clientId": "你的AppKey",');
-    console.log('[DingTalk][getConfig]       "clientSecret": "你的AppSecret"');
-    console.log('[DingTalk][getConfig]     }');
-    console.log('[DingTalk][getConfig]   }');
-    console.log('[DingTalk][getConfig] }');
-    console.log('[DingTalk][getConfig] !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
     return {} as DingTalkConfig;
   }
 
@@ -176,11 +157,6 @@ export function getConfig(cfg: OpenClawConfig, accountId?: string): DingTalkConf
     if (accountConfig) return accountConfig;
   }
 
-  console.log('[DingTalk][getConfig] clientId:', dingtalkCfg.clientId ? `${dingtalkCfg.clientId.substring(0, 8)}...` : '未配置!');
-  console.log('[DingTalk][getConfig] clientSecret:', dingtalkCfg.clientSecret ? '已配置' : '未配置!');
-  console.log('[DingTalk][getConfig] enabled:', dingtalkCfg.enabled);
-  console.log('[DingTalk][getConfig] ====== 配置检查完成 ======');
-  
   return dingtalkCfg as DingTalkConfig;
 }
 
